@@ -1,3 +1,8 @@
+## Get International Txs
+
+默认加载/data/result
+默认写入本地数据库 root:123456@tcp(127.0.0.1:3306)/testDb
+
 ## Go Ethereum
 
 Official Golang implementation of the Ethereum protocol.
