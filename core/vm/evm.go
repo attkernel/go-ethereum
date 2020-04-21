@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"fmt"
 	"math/big"
 	"sync/atomic"
 	"time"
@@ -128,6 +129,8 @@ type EVM struct {
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
 	callGasTemp uint64
+	//return eth transfers
+	TxDetails []string
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
@@ -140,6 +143,7 @@ func NewEVM(ctx Context, statedb StateDB, chainConfig *params.ChainConfig, vmCon
 		chainConfig:  chainConfig,
 		chainRules:   chainConfig.Rules(ctx.BlockNumber),
 		interpreters: make([]Interpreter, 0, 1),
+		TxDetails:    []string{},
 	}
 
 	if chainConfig.IsEWASM(ctx.BlockNumber) {
@@ -199,6 +203,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 	if !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
 		return nil, gas, ErrInsufficientBalance
 	}
+	evm.TxDetails = append(evm.TxDetails, fmt.Sprintf("%s,%s,%v", caller.Address().String(), addr.String(), value))
 
 	var (
 		to       = AccountRef(addr)

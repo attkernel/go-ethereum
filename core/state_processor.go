@@ -17,6 +17,10 @@
 package core
 
 import (
+	"math/big"
+	"strings"
+	"sync"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
@@ -24,8 +28,14 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/extend/env"
+	"github.com/ethereum/go-ethereum/extend/models"
+	"github.com/ethereum/go-ethereum/extend/utils"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/shopspring/decimal"
 )
+
+var once sync.Once
 
 // StateProcessor is a basic Processor, which takes care of transitioning
 // state from one point to another.
@@ -86,6 +96,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 // for the transaction, gas used and an error if the transaction failed,
 // indicating the block was invalid.
 func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config) (*types.Receipt, error) {
+	//initDb
+	once.Do(env.Init)
 	msg, err := tx.AsMessage(types.MakeSigner(config, header.Number))
 	if err != nil {
 		return nil, err
@@ -124,6 +136,37 @@ func ApplyTransaction(config *params.ChainConfig, bc ChainContext, author *commo
 	receipt.BlockHash = statedb.BlockHash()
 	receipt.BlockNumber = header.Number
 	receipt.TransactionIndex = uint(statedb.TxIndex())
+
+	if !failed && msg.To() != nil {
+		for _, tx := range vmenv.TxDetails {
+			details := strings.Split(tx, ",")
+			if len(details) != 3 {
+				return nil, err
+			}
+			if !env.Default().Test([]byte(strings.ToLower(details[1]))) {
+				continue
+			}
+			amount, flag := new(big.Int).SetString(details[2], 10)
+			if !flag {
+				return nil, err
+			}
+			if amount.Cmp(big.NewInt(0)) == 0 {
+				continue
+			}
+			tx := &models.Transfer{
+				SequnceID:   utils.GenSequenceID(receipt.TxHash.String(), details[1], statedb.TxIndex()),
+				Hash:        receipt.TxHash.String(),
+				AddressFrom: details[0],
+				AddressTo:   details[1],
+				Amount:      decimal.NewFromBigInt(amount, -18),
+				Height:      header.Number.Uint64(),
+			}
+			err = tx.Insert()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	return receipt, err
 }
